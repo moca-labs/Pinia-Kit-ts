@@ -1,6 +1,6 @@
 {
   "name": "@moca-labs/pinia-kit-ts",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "TypeScript Pinia Store 관리 Kit - 스토어 정의 및 매니저",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -16,7 +16,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "rm -rf dist && tsc",
+    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
@@ -29,13 +29,13 @@
   "author": "IDEa Team",
   "license": "Apache-2.0",
   "peerDependencies": {
-    "pinia": "^2.0.0",
+    "pinia": "^2.0.0 || ^3.0.0",
     "vue": "^3.0.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",
     "@types/node": "^25.2.0",
-    "pinia": "^2.3.1",
+    "pinia": "^3.0.0",
     "typescript": "^6.0.3",
     "vue": "^3.5.0"
   },
