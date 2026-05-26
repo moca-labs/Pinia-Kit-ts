@@ -2,9 +2,17 @@ import type { Pinia } from "pinia";
 import { getActivePinia } from "pinia";
 
 export class McStoreManager {
-	static _pinia: Pinia | null = null;
+	private static pinia: Pinia | null = null;
 
 	private constructor() {}
+
+	public static setPinia(pinia: Pinia): void {
+		McStoreManager.pinia = pinia;
+	}
+
+	public static getPinia(): Pinia | null {
+		return McStoreManager.pinia ?? getActivePinia() ?? null;
+	}
 
 	/**
 	 * McStore.define() 으로 등록되지 않은 기존 Pinia store를
@@ -13,17 +21,13 @@ export class McStoreManager {
 	 * @example
 	 * McStoreManager.use(useAppStore).setLoading(true)
 	 */
-	static use<T>(storeHook: (pinia?: Pinia) => T): T {
-		const pinia = McStoreManager._pinia ?? getActivePinia();
+	public static use<T>(storeHook: (pinia?: Pinia) => T): T {
+		const pinia = McStoreManager.pinia ?? getActivePinia();
 		if (!pinia) {
 			throw new Error(
-				"[McStoreManager] Pinia 인스턴스를 찾을 수 없습니다. main.ts 에서 McStore.create() 를 사용하세요.",
+				"[McStoreManager] No Pinia instance found. Call McStore.create() in main.ts.",
 			);
 		}
 		return storeHook(pinia);
-	}
-
-	static getPinia(): Pinia | null {
-		return McStoreManager._pinia ?? getActivePinia() ?? null;
 	}
 }
