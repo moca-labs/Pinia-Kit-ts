@@ -1,6 +1,7 @@
 import type { Pinia } from "pinia";
 import { defineStore, setActivePinia } from "pinia";
 import type { App } from "vue";
+import { computed, reactive, toRef } from "vue";
 import { McStoreManager } from "./McStoreManager";
 
 type Constructor<T extends object> = new () => T;
@@ -33,48 +34,117 @@ class McStoreImpl {
 			}
 		}
 
-		const getters: Record<string, (this: object) => unknown> = {};
-		const actions: Record<string, (...args: unknown[]) => unknown> = {};
+		const getterMap: Record<string, () => unknown> = {};
+		const setterMap: Record<string, (v: unknown) => void> = {};
+		const methodMap: Record<string, (...args: unknown[]) => unknown> = {};
 
 		for (const prop of Object.getOwnPropertyNames(proto)) {
 			if (prop === "constructor") continue;
 			const descriptor = Object.getOwnPropertyDescriptor(proto, prop);
 			if (!descriptor) continue;
-			if (descriptor.get) {
-				const get = descriptor.get;
-				getters[prop] = function (this: object) {
-					return get.call(this);
-				};
-			} else if (typeof descriptor.value === "function") {
-				actions[prop] = descriptor.value as (...args: unknown[]) => unknown;
+			if (descriptor.get) getterMap[prop] = descriptor.get;
+			if (descriptor.set)
+				setterMap[prop] = descriptor.set as (v: unknown) => void;
+			if (
+				!descriptor.get &&
+				!descriptor.set &&
+				typeof descriptor.value === "function"
+			) {
+				methodMap[prop] = descriptor.value as (...args: unknown[]) => unknown;
 			}
 		}
 
-		actions.reset = function (this: { $reset(): void }) {
-			this.$reset();
-		};
+		// Setup store API를 사용해 writable computed를 통해 getter/setter를 처리합니다.
+		// Options API는 action 내부에서 this가 Pinia store에 rebind되어
+		// this.prop = value 가 readonly computed에 막히는 문제가 있습니다.
+		const useStore = defineStore(key, () => {
+			const stateClone: Record<string, unknown> = {};
+			for (const [k, v] of Object.entries(initialState)) {
+				try {
+					stateClone[k] = structuredClone(v);
+				} catch {
+					stateClone[k] = v;
+				}
+			}
+			const state = reactive(stateClone);
 
-		actions.undefine = function (this: { $id: string; $dispose(): void }) {
-			this.$dispose();
-			registry.delete(this.$id);
-		};
+			// ctx는 모든 클래스 메서드/getter/setter에서 this로 사용됩니다.
+			// get/set을 가로채 getterMap/setterMap을 경유합니다.
+			const ctx = new Proxy(state as Record<string, unknown>, {
+				get(target, k) {
+					const key = String(k);
+					if (key in getterMap) return getterMap[key].call(ctx);
+					return target[key];
+				},
+				set(target, k, value) {
+					const key = String(k);
+					if (key in setterMap) {
+						setterMap[key].call(ctx, value);
+						return true;
+					}
+					target[key] = value;
+					return true;
+				},
+			});
 
-		const useStore = defineStore(key, {
-			state: (): Record<string, unknown> => {
-				const s: Record<string, unknown> = {};
+			// biome-ignore lint/suspicious/noExplicitAny: Pinia setup store 반환 타입
+			const result: Record<string, any> = {};
+
+			// 상태 프로퍼티를 ref로 노출 (Pinia가 상태로 인식)
+			for (const k of Object.keys(initialState)) {
+				result[k] = toRef(state as Record<string, unknown>, k);
+			}
+
+			// getter/setter를 computed로 노출
+			const accessorProps = new Set([
+				...Object.keys(getterMap),
+				...Object.keys(setterMap),
+			]);
+			for (const prop of accessorProps) {
+				const hasGet = prop in getterMap;
+				const hasSet = prop in setterMap;
+
+				if (hasGet && hasSet) {
+					// 양방향 computed: store.prop = value 가 ctx → setter 경유
+					result[prop] = computed({
+						get: () => getterMap[prop].call(ctx),
+						set: (value: unknown) => setterMap[prop].call(ctx, value),
+					});
+				} else if (hasGet) {
+					result[prop] = computed(() => getterMap[prop].call(ctx));
+				} else {
+					// setter only: get은 undefined, set만 동작
+					result[prop] = computed({
+						get: () => undefined,
+						set: (value: unknown) => setterMap[prop].call(ctx, value),
+					});
+				}
+			}
+
+			// 메서드: ctx를 this로 바인딩해 호출
+			for (const [prop, method] of Object.entries(methodMap)) {
+				result[prop] = (...args: unknown[]) => method.apply(ctx, args);
+			}
+
+			result.reset = () => {
 				for (const [k, v] of Object.entries(initialState)) {
 					try {
-						s[k] = structuredClone(v);
+						(state as Record<string, unknown>)[k] = structuredClone(v);
 					} catch {
-						s[k] = v;
+						(state as Record<string, unknown>)[k] = v;
 					}
 				}
-				return s;
-			},
-			// biome-ignore lint/suspicious/noExplicitAny: Pinia 내부 타입과 병합 필요
-			getters: getters as any,
-			// biome-ignore lint/suspicious/noExplicitAny: Pinia 내부 타입과 병합 필요
-			actions: actions as any,
+			};
+
+			result.undefine = () => {
+				const hook = registry.get(key);
+				if (!hook) return;
+				const pinia = McStoreManager.getPinia() ?? undefined;
+				(hook(pinia) as { $dispose(): void }).$dispose();
+				registry.delete(key);
+			};
+
+			return result;
 		});
 
 		registry.set(key, useStore);
