@@ -1,6 +1,6 @@
 {
   "name": "@moca-labs/pinia-kit-ts",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "TypeScript Pinia Store 관리 Kit - 스토어 정의 및 매니저",
   "main": "dist/index.js",
   "module": "dist/index.js",

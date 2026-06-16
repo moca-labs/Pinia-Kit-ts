@@ -5,11 +5,13 @@ import { CounterState, useCounterStore } from './stores/CounterStore'
 import { useAuthStore } from './stores/AuthStore'
 import { useThemeStore } from './stores/ThemeStore'
 import { WriteOnlyState, useWriteOnlyStore } from './stores/WriteOnlyStore'
+import { useTabMenuStatusStore } from './stores/TabMenuStatusStore'
 
 const counter = useCounterStore()
 const auth = useAuthStore()
 const theme = useThemeStore()
 const writeOnly = useWriteOnlyStore()
+const tabMenu = useTabMenuStatusStore()
 
 // ── 로그 패널 ──────────────────────────────────────────────
 const consoleLogs = ref<string[]>([])
@@ -97,7 +99,33 @@ function redefineCounter() {
 	checkHas()
 }
 
-// ── 6. setup() 밖 호출 시뮬레이션 ─────────────────────────
+// ── 6. 메서드 간 this 호출 (버그 수정 검증) ───────────────
+const tabShowInput = ref('Y')
+const tabValueInput = ref('TAB_A')
+const tabCallError = ref<string | null>(null)
+
+function callActionTabShow() {
+	tabCallError.value = null
+	try {
+		tabMenu.actionTabShow(tabShowInput.value)
+		appendLog(`tabMenu.actionTabShow("${tabShowInput.value}") → tabShow=${tabMenu.tabShow}`)
+	} catch (e) {
+		tabCallError.value = String(e)
+		appendLog(`[ERROR] ${e}`)
+	}
+}
+function callActionTabValue() {
+	tabCallError.value = null
+	try {
+		tabMenu.actionTabValue(tabValueInput.value)
+		appendLog(`tabMenu.actionTabValue("${tabValueInput.value}") → tabValue=${tabMenu.tabValue}, oldTabValue=${tabMenu.oldTabValue}`)
+	} catch (e) {
+		tabCallError.value = String(e)
+		appendLog(`[ERROR] ${e}`)
+	}
+}
+
+// ── 7. setup() 밖 호출 시뮬레이션 ─────────────────────────
 function callOutsideSetup() {
 	// Vue setup() 없이도 McStore('key', Class) 로 바로 접근 가능
 	const c = McStore('counter', CounterState)
@@ -198,6 +226,37 @@ function callOutsideSetup() {
 					<input v-model="writeMsg" placeholder="메시지 입력" style="width:160px" />
 					<button @click="sendMessage()">lastMessage = … <small>(setter only)</small></button>
 					<button class="warn" @click="writeOnly.clear()">clear()</button>
+				</div>
+			</section>
+
+			<!-- ── 6. 메서드 간 this 호출 (버그 수정 검증) ── -->
+			<section class="full-width">
+				<h2>6. 메서드 간 this 호출</h2>
+				<p class="desc">action 메서드 내부에서 <code>this.mutation()</code> 호출 — 수정 전 <code>TypeError: this.mutationTabShow is not a function</code> 발생</p>
+				<div class="api-grid" style="grid-template-columns: repeat(2, 1fr)">
+					<div>
+						<h3>상태</h3>
+						<div class="state-box">
+							<div class="row"><span>tabShow</span><strong>{{ tabMenu.tabShow }}</strong></div>
+							<div class="row"><span>tabValue</span><strong>{{ tabMenu.tabValue || '(없음)' }}</strong></div>
+							<div class="row"><span>oldTabValue</span><strong>{{ tabMenu.oldTabValue || '(없음)' }}</strong></div>
+						</div>
+						<div v-if="tabCallError" class="error-box">{{ tabCallError }}</div>
+					</div>
+					<div>
+						<h3>actionTabShow → mutationTabShow</h3>
+						<p class="small">action이 내부적으로 mutation을 this로 호출</p>
+						<div class="actions">
+							<input v-model="tabShowInput" placeholder="Y / N" style="width:60px" />
+							<button class="ok" @click="callActionTabShow()">actionTabShow()</button>
+						</div>
+						<h3 style="margin-top:12px">actionTabValue → mutationTabValue</h3>
+						<p class="small">mutation 내에서 this.tabValue, this.oldTabValue 동시 변경</p>
+						<div class="actions">
+							<input v-model="tabValueInput" placeholder="탭 이름" style="width:100px" />
+							<button class="ok" @click="callActionTabValue()">actionTabValue()</button>
+						</div>
+					</div>
 				</div>
 			</section>
 
@@ -318,4 +377,6 @@ input { padding: 4px 8px; font-size: 0.85rem; border: 1px solid #ccc; border-rad
 .console-body { padding: 12px 16px; min-height: 120px; max-height: 240px; overflow-y: auto; }
 .console-line { font-family: 'Consolas', monospace; font-size: 0.8rem; color: #a8d8a8; padding: 2px 0; border-bottom: 1px solid #2d2d2d; }
 .console-body .empty { color: #555; font-size: 0.8rem; font-family: monospace; }
+
+.error-box { background: #fee2e2; border: 1px solid #fca5a5; border-radius: 6px; padding: 8px 12px; font-size: 0.8rem; color: #b91c1c; font-family: monospace; margin-top: 8px; }
 </style>

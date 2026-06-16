@@ -74,6 +74,8 @@ class McStoreImpl {
 				get(target, k) {
 					const key = String(k);
 					if (key in getterMap) return getterMap[key].call(ctx);
+					if (key in methodMap)
+						return (...args: unknown[]) => methodMap[key].apply(ctx, args);
 					return target[key];
 				},
 				set(target, k, value) {
