@@ -4,10 +4,9 @@ import { resolve } from 'path'
 
 export default defineConfig({
 	plugins: [vue()],
-	root: resolve(__dirname, 'demo'),
 	resolve: {
 		alias: {
-			'@moca-labs/pinia-kit-ts': resolve(__dirname, 'src/index.ts'),
+			'@moca-labs/pinia-kit-ts': resolve(__dirname, '../src/index.ts'),
 		},
 	},
 })
